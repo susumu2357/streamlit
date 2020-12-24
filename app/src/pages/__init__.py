@@ -6,8 +6,8 @@ from typing import Dict, Type
 
 
 PAGE_MAP: Dict[str, Type[Page]] = {
-    "Page 1": Page1,
-    "Page 2": Page2,
+    "Grade 3": Page1,
+    "Grade 6": Page2,
 }
 
 __all__ = ["PAGE_MAP"]
