@@ -53,16 +53,99 @@ def load_df():
         year_list += [year]*len(commun_year[year])
     time_seires_df = pd.concat(
         [time_seires_df, pd.Series(year_list, name='year')], axis=1)
-    return df_year, commun_year, time_seires_df
+
+    school_time_seires_df = pd.DataFrame(
+        columns=list(df_year['2015'].columns)
+        + ['year', 'english_rank', 'math_rank', 'swedish_rank', 'average_rank'])
+    for year in ['2015', '2016', '2017', '2018', '2019']:
+        tmp_df = df_year[year]
+        tmp_df['year'] = [year]*len(tmp_df)
+        tmp_df.sort_values('english_score', ascending=False, inplace=True)
+        tmp_df['english_rank'] = tmp_df.reset_index().index + 1
+        tmp_df.sort_values('math_score', ascending=False, inplace=True)
+        tmp_df['math_rank'] = tmp_df.reset_index().index + 1
+        tmp_df.sort_values('swedish_score', ascending=False, inplace=True)
+        tmp_df['swedish_rank'] = tmp_df.reset_index().index + 1
+        tmp_df.sort_values('average_score', ascending=False, inplace=True)
+        tmp_df['average_rank'] = tmp_df.reset_index().index + 1
+        school_time_seires_df = school_time_seires_df.append(tmp_df)
+    school_time_seires_df.reset_index(inplace=True)
+
+    return df_year, commun_year, time_seires_df, school_time_seires_df
 
 class Page2(Page):
     def __init__(self, state):
         self.state = state
 
     def write(self):
-        df_year, commun_year, time_seires_df = load_df()
+        df_year, commun_year, time_seires_df, school_time_seires_df = load_df()
 
         st.title('Elementary School Grade 6')
+
+        st.header("Statistics of school")
+        
+        school_option = st.selectbox(
+        'Choose subject',
+        ['average_rank', 'english_rank', 'math_rank', 'swedish_rank'])
+
+        school_top = st.selectbox(
+        'Choose top-N',
+        [5, 10, 30])
+
+        top_df = school_time_seires_df[school_time_seires_df[school_option] <= school_top].sort_values(school_option, ascending=True)
+
+        school_time_series = alt.Chart(top_df).mark_line().encode(
+            x='year:O',
+            y=alt.Y(f'{school_option}:O', sort=None),
+            color='school',
+        )
+
+        school_points = school_time_series.mark_point(color='black').encode(
+            x='year:O',
+            y=alt.Y(f'{school_option}:O', sort=None),
+            size=alt.value(100),
+            tooltip=['school', 'school_commun', 'type', f'{school_option}', 'year']
+        )
+
+        st.write((school_time_series + school_points).properties(width=600))
+        st.write(top_df[['school', 'school_commun', 'type', 'year', 'average_score',
+        'average_rank', 'english_rank', 'math_rank', 'swedish_rank']])
+
+
+        # Define a layer to display on a map
+        layer = pdk.Layer(
+            "ScatterplotLayer",
+            top_df,
+            pickable=True,
+            opacity=0.5,
+            stroked=True,
+            filled=True,
+            auto_highlight=True,
+            radius_scale=10,
+            radius_min_pixels=5,
+            radius_max_pixels=25,
+            line_width_min_pixels=1,
+            get_position=['longitude', 'latitude'],
+            get_radius='nr_students',
+            get_fill_color=[255, 140, 0],
+            get_line_color=[0, 0, 0],
+        )
+
+        # Set the viewport location
+        view_state = pdk.ViewState(
+            latitude=top_df['latitude'].mean(), 
+            longitude=top_df['longitude'].mean(), 
+            zoom=7, bearing=0, pitch=0)
+
+        # Render
+        r = pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9',
+            layers=[layer], initial_view_state=view_state, 
+            tooltip={"text": "{school}\n{school_commun}\n{year}\nenglish_rank:{english_rank}\nmath_rank:{math_rank}\nswedish_rank:{swedish_rank}\naverage_rank:{average_rank}"})
+
+        st.pydeck_chart(r)
+
+
         st.header("Statistics of commun")
         
         # interval selection in the scatter plot
