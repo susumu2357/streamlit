@@ -9,16 +9,19 @@ import requests
 import altair as alt
 import pydeck as pdk
 
+
 def load_pickle(url):
     response = requests.get(url)
     gzip_file = io.BytesIO(response.content)
     with gzip.open(gzip_file, 'rb') as f:
         return pickle.load(f)
 
+
 url = 'https://storage.googleapis.com/test_bucket_20200914/year6_with_location_2015_2019.pkl.gz'
 
 # load
 school_df_dict = load_pickle(url)
+
 
 @st.cache
 def load_df():
@@ -32,18 +35,22 @@ def load_df():
 
         tmp_df = df1.groupby(['school', 'school_commun', 'type', 'formatted_address', 'latitude', 'longitude'])['average_score'].median().reset_index()\
             .merge(df2.groupby('school')['average_score'].median().reset_index(), on='school')
-        tmp_df = tmp_df.merge(df3.groupby('school')['average_score'].median().reset_index(), on='school')
-        df_year[year] = tmp_df.rename(columns={'average_score_x':'english_score', 'average_score_y':'math_score', 'average_score':'swedish_score'})
-        df_year[year]['average_score'] = df_year[year][['english_score', 'math_score', 'swedish_score']].mean(axis=1).round(2)
+        tmp_df = tmp_df.merge(df3.groupby('school')[
+                              'average_score'].median().reset_index(), on='school')
+        df_year[year] = tmp_df.rename(columns={
+                                      'average_score_x': 'english_score', 'average_score_y': 'math_score', 'average_score': 'swedish_score'})
+        df_year[year]['average_score'] = df_year[year][[
+            'english_score', 'math_score', 'swedish_score']].mean(axis=1).round(2)
 
-        commun_year[year] = pd.DataFrame(df_year[year].groupby(['school_commun', 'type'])['average_score']\
-            .describe().sort_values('50%', ascending=False).to_records())
-        commun_year[year]['school_commun_type'] = [a+'_'+b for a,b in zip(commun_year[year]['school_commun'].values, commun_year[year]['type'].values)]
+        commun_year[year] = pd.DataFrame(df_year[year].groupby(['school_commun', 'type'])['average_score']
+                                         .describe().sort_values('50%', ascending=False).to_records())
+        commun_year[year]['school_commun_type'] = [a+'_'+b for a, b in zip(
+            commun_year[year]['school_commun'].values, commun_year[year]['type'].values)]
         commun_year[year]['rank'] = commun_year[year].index + 1
 
-
     time_seires_df = pd.concat(
-        [commun_year['2015'][['school_commun_type', 'rank']], commun_year['2016'][['school_commun_type', 'rank']]],
+        [commun_year['2015'][['school_commun_type', 'rank']],
+            commun_year['2016'][['school_commun_type', 'rank']]],
         ignore_index=True)
     for y in ['2017', '2018', '2019']:
         time_seires_df = pd.concat(
@@ -73,6 +80,7 @@ def load_df():
 
     return df_year, commun_year, time_seires_df, school_time_seires_df
 
+
 class Page2(Page):
     def __init__(self, state):
         self.state = state
@@ -83,16 +91,19 @@ class Page2(Page):
         st.title('Elementary School Grade 6')
 
         st.header("Statistics of school")
-        
+
         school_option = st.selectbox(
-        'Choose subject',
-        ['average_rank', 'english_rank', 'math_rank', 'swedish_rank'])
+            'Choose subject',
+            ['average_rank', 'english_rank', 'math_rank', 'swedish_rank'])
 
         school_top = st.selectbox(
-        'Choose top-N',
-        [5, 10, 30])
+            'Choose top-N',
+            [5, 10, 30])
 
-        top_df = school_time_seires_df[school_time_seires_df[school_option] <= school_top].sort_values(school_option, ascending=True)
+        top_df = school_time_seires_df[school_time_seires_df[school_option] <= school_top].sort_values(
+            school_option, ascending=True)
+        top_df_avg = pd.DataFrame(top_df.groupby(['school', 'school_commun', 'type', 'formatted_address', 'latitude', 'longitude'])[
+                                  ['average_score', 'english_score', 'math_score', 'swedish_score']].mean().round(2).to_records()).sort_values('average_score', ascending=False)
 
         school_time_series = alt.Chart(top_df).mark_line().encode(
             x='year:O',
@@ -104,50 +115,88 @@ class Page2(Page):
             x='year:O',
             y=alt.Y(f'{school_option}:O', sort=None),
             size=alt.value(100),
-            tooltip=['school', 'school_commun', 'type', f'{school_option}', 'year']
+            tooltip=['school', 'school_commun',
+                     'type', f'{school_option}', 'year']
         )
 
-        st.write((school_time_series + school_points).properties(width=600))
-        st.write(top_df[['school', 'school_commun', 'type', 'year', 'average_score',
-        'average_rank', 'english_rank', 'math_rank', 'swedish_rank']])
+        st.write(
+            (school_time_series + school_points).properties(width=600, height=400)
+        )
 
+        st.subheader(f'5 years average of top-{school_top} schools')
+
+        base = alt.Chart(top_df_avg).encode(y=alt.Y('school', sort=None),)
+
+        bar = base.mark_bar().encode(x='average_score:Q',
+                                     color='type',
+                                     tooltip=[
+                                         'school_commun',
+                                         'average_score',
+                                         'english_score',
+                                         'math_score',
+                                         'swedish_score',
+                                     ]
+                                     )
+
+        english = base.mark_point(color='blue').encode(
+            x='english_score:Q',
+        )
+
+        math = base.mark_point(color='green').encode(
+            x='math_score:Q',
+        )
+
+        swedish = base.mark_point(color='red').encode(
+            x='swedish_score:Q',
+        )
+
+        text = base.mark_text(
+            align='left',
+            baseline='middle',
+        ).encode(
+            text='average_score:Q'
+        )
+
+        st.write((bar + english + math + swedish + text).properties(width=600))
 
         # Define a layer to display on a map
         layer = pdk.Layer(
             "ScatterplotLayer",
-            top_df,
+            top_df_avg,
             pickable=True,
             opacity=0.5,
             stroked=True,
             filled=True,
             auto_highlight=True,
             radius_scale=10,
-            radius_min_pixels=5,
-            radius_max_pixels=25,
+            # radius_min_pixels=5,
+            # radius_max_pixels=25,
             line_width_min_pixels=1,
             get_position=['longitude', 'latitude'],
-            get_radius='nr_students',
+            get_radius=15,
             get_fill_color=[255, 140, 0],
             get_line_color=[0, 0, 0],
         )
 
         # Set the viewport location
         view_state = pdk.ViewState(
-            latitude=top_df['latitude'].mean(), 
-            longitude=top_df['longitude'].mean(), 
+            latitude=top_df['latitude'].mean(),
+            longitude=top_df['longitude'].mean(),
             zoom=7, bearing=0, pitch=0)
 
         # Render
         r = pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
-            layers=[layer], initial_view_state=view_state, 
-            tooltip={"text": "{school}\n{school_commun}\n{year}\nenglish_rank:{english_rank}\nmath_rank:{math_rank}\nswedish_rank:{swedish_rank}\naverage_rank:{average_rank}"})
+            layers=[layer], initial_view_state=view_state,
+            tooltip={"text": "{school}\n{school_commun}\nenglish_score:{english_score}\nmath_score:{math_score}\nswedish_score:{swedish_score}\naverage_score:{average_score}"})
 
         st.pydeck_chart(r)
 
+        st.write(top_df[['school', 'school_commun', 'type', 'year', 'average_score',
+                         'average_rank', 'english_rank', 'math_rank', 'swedish_rank']])
 
         st.header("Statistics of commun")
-        
+
         # interval selection in the scatter plot
         pts = alt.selection(type="interval", encodings=["x"])
 
@@ -175,7 +224,8 @@ class Page2(Page):
         mag = alt.Chart().mark_bar().encode(
             x='rank_bin:N',
             y="count()",
-            color=alt.condition(pts, alt.value("lightgreen"), alt.value("lightgray"))
+            color=alt.condition(pts, alt.value(
+                "lightgreen"), alt.value("lightgray"))
         ).properties(
             width=300,
             height=200
@@ -197,8 +247,8 @@ class Page2(Page):
 
         st.subheader('Average score (0 to 20) of English, Math and Swedish')
         option_year = st.selectbox(
-        'Choose year',
-        ['2015', '2016', '2017', '2018', '2019'])
+            'Choose year',
+            ['2015', '2016', '2017', '2018', '2019'])
 
         bars = alt.Chart(commun_year[option_year]).mark_bar().encode(
             x='50%:Q',
@@ -216,17 +266,19 @@ class Page2(Page):
         )
 
         st.write((bars + text).properties(width=600))
-        st.write(commun_year[option_year][commun_year[option_year].columns[:-1]])
+        st.write(commun_year[option_year]
+                 [commun_year[option_year].columns[:-1]])
 
         st.header("Statistics of commun")
         st.subheader('Average score of each school in the selected commun')
         option_commun = st.selectbox(
-        'Choose commun',
-        df_year[option_year]['school_commun'].sort_values().unique())
+            'Choose commun',
+            df_year[option_year]['school_commun'].sort_values().unique())
 
-        commun_df = df_year[option_year][df_year[option_year]['school_commun']==option_commun]
+        commun_df = df_year[option_year][df_year[option_year]
+                                         ['school_commun'] == option_commun]
         commun_df = commun_df.sort_values('average_score', ascending=False)
-        
+
         st.subheader(f"Statistics of {option_commun}")
 
         # Define a layer to display on a map
@@ -250,14 +302,14 @@ class Page2(Page):
 
         # Set the viewport location
         view_state = pdk.ViewState(
-            latitude=commun_df['latitude'].mean(), 
-            longitude=commun_df['longitude'].mean(), 
+            latitude=commun_df['latitude'].mean(),
+            longitude=commun_df['longitude'].mean(),
             zoom=10, bearing=0, pitch=0)
 
         # Render
         r = pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
-            layers=[layer], initial_view_state=view_state, 
+            layers=[layer], initial_view_state=view_state,
             tooltip={"text": "{school}\n{formatted_address}\naverage_score:{average_score}"})
 
         st.pydeck_chart(r)
@@ -265,24 +317,24 @@ class Page2(Page):
         base = alt.Chart(commun_df).encode(y=alt.Y('school', sort=None),)
 
         bar = base.mark_bar().encode(x='average_score:Q',
-                                    color='type',
-                                    tooltip=[
-                                        'average_score',
-                                        'english_score',
-                                        'math_score',
-                                        'swedish_score',
-                                            ]
-        )
+                                     color='type',
+                                     tooltip=[
+                                         'average_score',
+                                         'english_score',
+                                         'math_score',
+                                         'swedish_score',
+                                     ]
+                                     )
 
-        english =  base.mark_point(color='blue').encode(
+        english = base.mark_point(color='blue').encode(
             x='english_score:Q',
         )
 
-        math =  base.mark_point(color='green').encode(
+        math = base.mark_point(color='green').encode(
             x='math_score:Q',
         )
 
-        swedish =  base.mark_point(color='red').encode(
+        swedish = base.mark_point(color='red').encode(
             x='swedish_score:Q',
         )
 
@@ -294,5 +346,5 @@ class Page2(Page):
         )
 
         st.write((bar + english + math + swedish + text).properties(width=600))
-        st.write(commun_df[['school', 'school_commun', 'type',  
-        'average_score', 'english_score', 'math_score', 'swedish_score']])
+        st.write(commun_df[['school', 'school_commun', 'type',
+                            'average_score', 'english_score', 'math_score', 'swedish_score']])
