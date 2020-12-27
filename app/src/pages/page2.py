@@ -105,8 +105,9 @@ class Page2(Page):
 
         top_df = school_time_seires_df[school_time_seires_df[school_option] <= school_top].sort_values(
             school_option, ascending=True)
+        school_score_option = school_option.replace('rank', 'score')
         top_df_avg = pd.DataFrame(top_df.groupby(['school', 'school_commun', 'type', 'formatted_address', 'latitude', 'longitude'])[
-                                  ['average_score', 'english_score', 'math_score', 'swedish_score']].mean().round(2).to_records()).sort_values('average_score', ascending=False)
+                                  ['average_score', 'english_score', 'math_score', 'swedish_score']].mean().round(2).to_records()).sort_values(school_score_option, ascending=False)
 
         school_time_series = alt.Chart(top_df).mark_line().encode(
             x='year:O',
@@ -130,7 +131,7 @@ class Page2(Page):
 
         base = alt.Chart(top_df_avg).encode(y=alt.Y('school', sort=None),)
 
-        bar = base.mark_bar().encode(x='average_score:Q',
+        bar = base.mark_bar().encode(x=f'{school_score_option}:Q',
                                      color='type',
                                      tooltip=[
                                          'school_commun',
@@ -157,7 +158,7 @@ class Page2(Page):
             align='left',
             baseline='middle',
         ).encode(
-            text='average_score:Q'
+            text=f'{school_score_option}:Q'
         )
 
         st.write((bar + english + math + swedish + text).properties(width=600))
