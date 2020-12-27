@@ -96,9 +96,12 @@ class Page2(Page):
             'Choose subject',
             ['average_rank', 'english_rank', 'math_rank', 'swedish_rank'])
 
-        school_top = st.selectbox(
-            'Choose top-N',
-            [5, 10, 30])
+        school_top = st.slider('Choose top-N',
+                               min_value=1, max_value=50, value=10, step=1)
+
+        # st.selectbox(
+        #     'Choose top-N',
+        #     [5, 10, 30])
 
         top_df = school_time_seires_df[school_time_seires_df[school_option] <= school_top].sort_values(
             school_option, ascending=True)
@@ -173,7 +176,7 @@ class Page2(Page):
             # radius_max_pixels=25,
             line_width_min_pixels=1,
             get_position=['longitude', 'latitude'],
-            get_radius=15,
+            get_radius=20,
             get_fill_color=[255, 140, 0],
             get_line_color=[0, 0, 0],
         )
@@ -182,7 +185,7 @@ class Page2(Page):
         view_state = pdk.ViewState(
             latitude=top_df['latitude'].mean(),
             longitude=top_df['longitude'].mean(),
-            zoom=7, bearing=0, pitch=0)
+            zoom=9, bearing=0, pitch=0)
 
         # Render
         r = pdk.Deck(
@@ -197,13 +200,12 @@ class Page2(Page):
 
         st.header("Statistics of commun")
 
-        # interval selection in the scatter plot
-        pts = alt.selection(type="interval", encodings=["x"])
+        top = st.slider('Choose top-N',
+                        min_value=1, max_value=len(time_seires_df['school_commun_type'].unique()), value=10, step=1)
 
-        # left panel: scatter plot
-        time_series = alt.Chart().mark_line().encode(
+        time_series = alt.Chart(time_seires_df[time_seires_df['rank'] <= top]).mark_line().encode(
             x='year:O',
-            y='rank:O',
+            y=alt.Y('rank:O', sort=None),
             color='school_commun_type',
         )
 
@@ -214,36 +216,57 @@ class Page2(Page):
             tooltip=['school_commun_type', 'rank', 'year']
         )
 
-        points = points.add_selection(alt.selection_single())
-
-        left = (time_series + points).transform_filter(
-            pts
-        ).properties(width=400, height=400)
-
-        # right panel: histogram
-        mag = alt.Chart().mark_bar().encode(
-            x='rank_bin:N',
-            y="count()",
-            color=alt.condition(pts, alt.value(
-                "lightgreen"), alt.value("lightgray"))
-        ).properties(
-            width=300,
-            height=200
-        ).add_selection(pts)
-
-        # build the chart:
-        ranking = alt.hconcat(
-            left,
-            mag,
-            data=time_seires_df
-        ).transform_bin(
-            'rank_bin',
-            field='rank',
-            bin=alt.Bin(maxbins=26)
+        st.write(
+            (time_series + points).properties(width=600, height=400)
         )
 
-        st.subheader('Select interval on the right chart')
-        st.write(ranking)
+        # # interval selection in the scatter plot
+        # pts = alt.selection(type="interval", encodings=["x"])
+
+        # # left panel: scatter plot
+        # time_series = alt.Chart().mark_line().encode(
+        #     x='year:O',
+        #     y='rank:O',
+        #     color='school_commun_type',
+        # )
+
+        # points = time_series.mark_point(color='black').encode(
+        #     x='year:O',
+        #     y='rank:O',
+        #     size=alt.value(100),
+        #     tooltip=['school_commun_type', 'rank', 'year']
+        # )
+
+        # points = points.add_selection(alt.selection_single())
+
+        # left = (time_series + points).transform_filter(
+        #     pts
+        # ).properties(width=400, height=400)
+
+        # # right panel: histogram
+        # mag = alt.Chart().mark_bar().encode(
+        #     x='rank_bin:N',
+        #     y="count()",
+        #     color=alt.condition(pts, alt.value(
+        #         "lightgreen"), alt.value("lightgray"))
+        # ).properties(
+        #     width=300,
+        #     height=200
+        # ).add_selection(pts)
+
+        # # build the chart:
+        # ranking = alt.hconcat(
+        #     left,
+        #     mag,
+        #     data=time_seires_df
+        # ).transform_bin(
+        #     'rank_bin',
+        #     field='rank',
+        #     bin=alt.Bin(maxbins=26)
+        # )
+
+        # st.subheader('Select interval on the right chart')
+        # st.write(ranking)
 
         st.subheader('Average score (0 to 20) of English, Math and Swedish')
         option_year = st.selectbox(
@@ -269,17 +292,22 @@ class Page2(Page):
         st.write(commun_year[option_year]
                  [commun_year[option_year].columns[:-1]])
 
-        st.header("Statistics of commun")
-        st.subheader('Average score of each school in the selected commun')
-        option_commun = st.selectbox(
-            'Choose commun',
-            df_year[option_year]['school_commun'].sort_values().unique())
+        st.subheader(
+            'Average score of each school located in the selected commun')
+        option_commun = st.multiselect(
+            label='Choose commun',
+            options=list(df_year[option_year]
+                         ['school_commun'].sort_values().unique()),
+            default=['Danderyd', 'Stockholm'],
+        )
 
         commun_df = df_year[option_year][df_year[option_year]
-                                         ['school_commun'] == option_commun]
+                                         ['school_commun'].str.contains('|'.join(option_commun))]
         commun_df = commun_df.sort_values('average_score', ascending=False)
+        commun_df['school_with_commun'] = [a+'_'+b for a, b in zip(
+            commun_df['school'].values, commun_df['school_commun'].values)]
 
-        st.subheader(f"Statistics of {option_commun}")
+        st.subheader(f"Statistics of {', '.join(option_commun)}")
 
         # Define a layer to display on a map
         layer = pdk.Layer(
@@ -304,7 +332,7 @@ class Page2(Page):
         view_state = pdk.ViewState(
             latitude=commun_df['latitude'].mean(),
             longitude=commun_df['longitude'].mean(),
-            zoom=10, bearing=0, pitch=0)
+            zoom=9, bearing=0, pitch=0)
 
         # Render
         r = pdk.Deck(
@@ -314,11 +342,13 @@ class Page2(Page):
 
         st.pydeck_chart(r)
 
-        base = alt.Chart(commun_df).encode(y=alt.Y('school', sort=None),)
+        base = alt.Chart(commun_df).encode(
+            y=alt.Y('school_with_commun', sort=None),)
 
         bar = base.mark_bar().encode(x='average_score:Q',
-                                     color='type',
+                                     color='school_commun',
                                      tooltip=[
+                                         'school',
                                          'average_score',
                                          'english_score',
                                          'math_score',
@@ -345,6 +375,6 @@ class Page2(Page):
             text='average_score:Q'
         )
 
-        st.write((bar + english + math + swedish + text).properties(width=600))
+        st.write((bar + english + math + swedish + text).properties(width=700))
         st.write(commun_df[['school', 'school_commun', 'type',
                             'average_score', 'english_score', 'math_score', 'swedish_score']])
